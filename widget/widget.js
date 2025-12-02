@@ -1,61 +1,64 @@
-// Simple embeddable widget for EIA flights
-// Usage:
-// loadFlightsWidget(containerId, apiUrl, { refreshInterval: seconds })
-export async function loadFlightsWidget(containerId, apiUrl, opts = {}) {
-  const container = document.getElementById(containerId);
-  if (!container) {
-    console.warn('Flight widget container not found:', containerId);
-    return;
-  }
+async function loadFlightsWidget(rootId, apiUrl, options = {}) {
+  const root = document.getElementById(rootId);
+  if (!root) return;
 
-  const refreshInterval = (opts.refreshInterval && Number(opts.refreshInterval)) || 0;
-  async function render() {
-    container.innerHTML = '<div class="ft-empty">Loading flights…</div>';
+  const refreshInterval = options.refreshInterval || 60;
+
+  async function fetchFlights() {
+    root.innerHTML = `<div class="ft-empty">Loading flights…</div>`;
+
     try {
-      const res = await fetch(apiUrl, { cache: 'no-store' });
-      if (!res.ok) throw new Error('API error: ' + res.status);
-      const json = await res.json();
-      const flights = Array.isArray(json.flights) ? json.flights : [];
+      const res = await fetch(apiUrl);
+      const data = await res.json();
 
-      if (flights.length === 0) {
-        container.innerHTML = '<div class="ft-empty">No flights found.</div>';
+      if (!data || !data.flights || data.flights.length === 0) {
+        root.innerHTML = `<div class="ft-empty">No flight data available.</div>`;
         return;
       }
 
-      let html = '<table class="ft-table"><thead><tr class="ft-header"><th>Time</th><th>Airline</th><th>Flight</th><th>To</th><th>Status</th></tr></thead><tbody>';
-      for (const f of flights) {
-        html += `<tr><td>${escapeHtml(f.time)}</td><td>${escapeHtml(f.airline)}</td><td>${escapeHtml(f.flight)}</td><td>${escapeHtml(f.destination)}</td><td>${escapeHtml(f.status)}</td></tr>`;
-      }
-      html += '</tbody></table>';
-      container.innerHTML = html;
+      renderTable(data.flights);
     } catch (err) {
-      console.error(err);
-      container.innerHTML = '<div class="ft-empty">Failed to load flights.</div>';
+      console.error("FLIGHT WIDGET ERROR:", err);
+      root.innerHTML = `<div class="ft-empty">Could not load flights.</div>`;
     }
   }
 
-  // run first time
-  render();
+  function renderTable(flights) {
+    let html = `
+      <table class="ft-table">
+        <thead>
+          <tr class="ft-header">
+            <th>Time</th>
+            <th>Airline</th>
+            <th>Flight</th>
+            <th>Destination</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
 
-  // set up refresh if needed
-  if (refreshInterval > 0) {
-    setInterval(render, refreshInterval * 1000);
+    flights.forEach(f => {
+      html += `
+        <tr>
+          <td>${f.time}</td>
+          <td>${f.airline}</td>
+          <td>${f.flight}</td>
+          <td>${f.destination}</td>
+          <td>${f.status}</td>
+        </tr>
+      `;
+    });
+
+    html += `</tbody></table>`;
+    root.innerHTML = html;
   }
-}
 
-// Simple HTML escape
-function escapeHtml(s) {
-  if (!s && s !== 0) return '';
-  return String(s).replace(/[&<>"'`=\/]/g, function(c) {
-    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;','=':'&#61;','/':'&#47;'}[c];
-  });
-}
+  // fetch immediately
+  fetchFlights();
 
-// If widget loaded directly as script tag (not as module), expose global function
-if (typeof window !== 'undefined' && !window.loadFlightsWidget) {
-  window.loadFlightsWidget = (containerId, apiUrl, opts) => {
-    (async () => {
-      await (typeof loadFlightsWidget === 'function' ? loadFlightsWidget(containerId, apiUrl, opts) : null);
-    })();
-  };
+  // auto-refresh
+  if (refreshInterval > 0) {
+    setInterval(fetchFlights, refreshInterval * 1000);
+  }
 }
